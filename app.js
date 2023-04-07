@@ -7,6 +7,14 @@ const session = require('express-session')
 const express = require('express')
 const cors = require('cors')
 
+// for line bot
+const line = require('@line/bot-sdk')
+const config = {
+  channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN,
+  channelSecret: process.env.CHANNEL_SECRET
+}
+// for line bot
+
 // require self-made module
 const passport = require('./config/passport')
 const { apis } = require('./routes')
@@ -31,6 +39,29 @@ app.use((req, res, next) => {
   req.session.messages = [] // 重設錯誤訊息
   next()
 })
+
+// for line bot
+app.post('/webhook', line.middleware(config), (req, res) => {
+  Promise.all(req.body.events.map(handleEvent))
+    .then(result => res.json(result))
+    .catch(err => console.error(err))
+})
+
+const client = new line.Client(config)
+
+function handleEvent (event) {
+  if (event.type !== 'message' || event.message.type !== 'text') {
+    return Promise.resolve(null)
+  }
+
+  const message = {
+    type: 'text',
+    text: `You said: ${event.message.text}`
+  }
+
+  return client.replyMessage(event.replyToken, message)
+}
+// for line bot
 
 app.use('/api', apis)
 
