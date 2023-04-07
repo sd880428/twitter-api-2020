@@ -8,12 +8,15 @@ const express = require('express')
 const cors = require('cors')
 
 // for line bot
+const { TextToSpeechClient } = require('@google-cloud/text-to-speech')
+const fs = require('fs')
 const line = require('@line/bot-sdk')
 const config = {
   channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.CHANNEL_SECRET
 }
 // for line bot
+
 
 // require self-made module
 const passport = require('./config/passport')
@@ -22,16 +25,102 @@ const { apis } = require('./routes')
 // app setting
 const app = express()
 const port = process.env.PORT || 4000
+
+// for line bot
+function GENMSG (str) {
+  this.type = 'text'
+  this.text = str
+}
+function GENSTICKER (packageId, stickerId) {
+  this.type = 'sticker'
+  this.packageId = packageId
+  this.stickerId = stickerId
+}
+function GENADDRESS (title, address, latitude, longitude) {
+  this.type = 'location'
+  this.title = title
+  this.address = address
+  this.latitude = latitude
+  this.longitude = longitude
+}
+const client = new line.Client(config)
+
+// client.pushMessage(process.env.CHANNEL_ID, new GENSTICKER(1,1))
+// client.pushMessage(process.env.CHANNEL_ID, new GENMSG('推播通知'))
+// 監聽
+async function handleEvent (event) {
+  if (event.type === 'message' && event.message.type === 'text') {
+    // const message = {
+    //   type: 'text',
+    //   text: 'Hello, World!'
+    // }
+    const quickMessage = {
+      type: 'text',
+      text: 'Please choose an option:',
+      quickReply: {
+        items: [
+          {
+            type: 'action',
+            action: {
+              type: 'message',
+              label: 'Option 1',
+              text: 'Option 1'
+            }
+          },
+          {
+            type: 'action',
+            action: {
+              type: 'message',
+              label: 'Option 2',
+              text: 'Option 2'
+            }
+          }
+        ]
+      }
+    }
+    return client
+      .replyMessage(event.replyToken, quickMessage)
+      .then(() => {
+        console.log('Location message sent!')
+      })
+      .catch(err => {
+        console.error(err)
+      })
+    // return client
+    //   .pushMessage(event.source.userId, message)
+    //   .then(() => {
+    //     console.log('Message sent!')
+    //   })
+    //   .catch(err => {
+    //     console.error(err)
+    //   })
+  }
+}
+app.use('/webhook', line.middleware(config))
+app.post('/webhook', (req, res) => {
+  console.log(req.body.events[0].message)
+  Promise.all(req.body.events.map(handleEvent))
+    .then(result => {
+      console.log(result)
+      res.json(result)
+    })
+    .catch(err => {
+      console.error('error at app.post', err)
+    })
+})
+
+// for line bot
 app.use(express.urlencoded({ extended: true }))// req.body
 app.use(methodOverride('_method'))
 app.use(express.json())// json
 app.use(cors())
-
-app.use(session({
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: true
-}))
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: true
+  })
+)
 app.use(passport.initialize())
 app.use(passport.session())
 
@@ -39,30 +128,9 @@ app.use((req, res, next) => {
   req.session.messages = [] // 重設錯誤訊息
   next()
 })
-
-// for line bot
-app.post('/webhook', line.middleware(config), (req, res) => {
-  Promise.all(req.body.events.map(handleEvent))
-    .then(result => res.json(result))
-    .catch(err => console.error(err))
+app.get('/', (req, res) => {
+  res.send('hello')
 })
-
-const client = new line.Client(config)
-
-function handleEvent (event) {
-  if (event.type !== 'message' || event.message.type !== 'text') {
-    return Promise.resolve(null)
-  }
-
-  const message = {
-    type: 'text',
-    text: `You said: ${event.message.text}`
-  }
-
-  return client.replyMessage(event.replyToken, message)
-}
-// for line bot
-
 app.use('/api', apis)
 
 app.listen(port, () => console.log(`Example app listening on port ${port}!`))
