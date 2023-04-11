@@ -17,6 +17,15 @@ const config = {
 }
 // for line bot
 
+// for openAI
+const { Configuration, OpenAIApi } = require('openai')
+const configuration = new Configuration({
+  organization: process.env.ORGANIZATION_ID,
+  apiKey: process.env.OPENAI_API_KEY
+})
+const openai = new OpenAIApi(configuration)
+
+// for openAI
 
 // require self-made module
 const passport = require('./config/passport')
@@ -50,56 +59,37 @@ const client = new line.Client(config)
 // 監聽
 async function handleEvent (event) {
   if (event.type === 'message' && event.message.type === 'text') {
-    // const message = {
-    //   type: 'text',
-    //   text: 'Hello, World!'
-    // }
-    const quickMessage = {
-      type: 'text',
-      text: 'Please choose an option:',
-      quickReply: {
-        items: [
-          {
-            type: 'action',
-            action: {
-              type: 'message',
-              label: 'Option 1',
-              text: 'Option 1'
-            }
-          },
-          {
-            type: 'action',
-            action: {
-              type: 'message',
-              label: 'Option 2',
-              text: 'Option 2'
-            }
-          }
-        ]
-      }
-    }
+    console.log(event.message.text)
+    const response = await openai.createChatCompletion({
+      model: 'gpt-3.5-turbo',
+      messages: [{ role: 'user', content: event.message.text }]
+    })
+    const response2 = await openai.createImage({
+      prompt: '貓咪',
+      n: 2,
+      size: '1024x1024'
+    })
+    console.log(response2.data.data[0].url)
     return client
-      .replyMessage(event.replyToken, quickMessage)
+      .replyMessage(
+        event.replyToken,
+        new GENMSG(response.data.choices[0].message.content)
+      )
       .then(() => {
-        console.log('Location message sent!')
+        event.message.text = ''
+        console.log('message sent!')
       })
       .catch(err => {
         console.error(err)
       })
-    // return client
-    //   .pushMessage(event.source.userId, message)
-    //   .then(() => {
-    //     console.log('Message sent!')
-    //   })
-    //   .catch(err => {
-    //     console.error(err)
-    //   })
   }
 }
 app.use('/webhook', line.middleware(config))
 app.post('/webhook', (req, res) => {
-  console.log(req.body.events[0].message)
-  Promise.all(req.body.events.map(handleEvent))
+  const events = req.body.events
+  const lastEvent = events[events.length - 1]
+
+  handleEvent(lastEvent)
     .then(result => {
       console.log(result)
       res.json(result)
